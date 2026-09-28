@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Optimizer - Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #f7f9fc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.9rem; }
+    .sidebar { width: 230px; min-height: 100vh; background: #fff; border-right: 1px solid #edf2f7; position: fixed; top: 0; left: 0; display: flex; flex-direction: column; justify-content: space-between; }
+    .brand { font-size: 1.1rem; font-weight: 700; color: #1e293b; padding: 22px 20px; display: flex; align-items: center; gap: 10px; }
+    .brand-icon { width: 32px; height: 32px; background: #2563eb; color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
+    .sidebar-menu a { display: flex; align-items: center; gap: 12px; padding: 10px 18px; color: #64748b; text-decoration: none; font-weight: 500; border-radius: 8px; margin: 2px 12px; cursor: pointer; }
+    .sidebar-menu a:hover, .sidebar-menu a.active { background-color: #eff6ff; color: #2563eb; }
+    .sidebar-heading { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; padding: 16px 20px 6px; letter-spacing: 0.5px; }
+    
+    .top-header { margin-left: 230px; height: 65px; background: #fff; border-bottom: 1px solid #edf2f7; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; position: sticky; top: 0; z-index: 99; }
+    .search-box { position: relative; width: 360px; }
+    .search-box input { border-radius: 20px; padding-left: 38px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 0.85rem; }
+    .search-box i { position: absolute; left: 14px; top: 9px; color: #94a3b8; }
+    
+    .main-body { margin-left: 230px; padding: 25px 30px; }
+    .kpi-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #edf2f7; }
+    .icon-badge { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; margin-bottom: 12px; }
+    .score-circle { width: 75px; height: 75px; border-radius: 50%; border: 7px solid #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; color: #1e293b; margin: 0 auto 10px; }
+    
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div>
+      <div class="brand">
+        <div class="brand-icon">C</div>
+        <span>Cloud Optimizer</span>
+      </div>
+      <div class="sidebar-menu">
+        <a class="nav-item active" onclick="switchTab('dashboard', this)"><i class="bi bi-house"></i> Dashboard</a>
+        <a class="nav-item" onclick="switchTab('discovery', this)"><i class="bi bi-search"></i> Resource Discovery</a>
+        <a class="nav-item" onclick="switchTab('monitoring', this)"><i class="bi bi-activity"></i> Monitoring</a>
+        <a class="nav-item" onclick="switchTab('idle', this)"><i class="bi bi-clock-history"></i> Idle Resources</a>
+        <a class="nav-item" onclick="switchTab('cost', this)"><i class="bi bi-currency-dollar"></i> Cost Analysis</a>
+        <a class="nav-item" onclick="switchTab('recommendations', this)"><i class="bi bi-lightbulb"></i> Recommendations</a>
+        <a class="nav-item" onclick="switchTab('reports', this)"><i class="bi bi-file-earmark-text"></i> Reports</a>
+        <a class="nav-item" onclick="switchTab('settings', this)"><i class="bi bi-gear"></i> Settings</a>
+      </div>
+    </div>
+    <div class="mb-3">
+      <div class="sidebar-heading">Account</div>
+      <div class="sidebar-menu">
+        <a href="/logout" class="text-danger"><i class="bi bi-box-arrow-left"></i> Logout</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="top-header">
+    <div class="search-box">
+      <i class="bi bi-search"></i>
+      <input type="text" class="form-control" placeholder="Search resources, alerts, reports...">
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <i class="bi bi-bell text-secondary fs-5 position-relative">
+        <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"></span>
+      </i>
+      <i class="bi bi-gear text-secondary fs-5"></i>
+      <div class="d-flex align-items-center gap-2 ms-2">
+        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 34px; height: 34px; font-size: 0.85rem;">RA</div>
+        <div>
+          <div class="fw-bold leading-none" style="font-size: 0.85rem;">{{ user_name }}</div>
+          <div class="text-muted" style="font-size: 0.72rem;">{{ company_name }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Body Content -->
+  <div class="main-body">
+
+    <!-- View 1: DASHBOARD -->
+    <div id="view-dashboard" class="view-panel active">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h4 class="fw-bold mb-1">Dashboard</h4>
+          <span class="text-muted">Overview of your multi-cloud resource health and spend</span>
+        </div>
+        <a href="/connect-cloud" class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold">+ Connect Cloud Account</a>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="row g-3 mb-4">
+        <div class="col">
+          <div class="kpi-card">
+            <div class="icon-badge bg-primary-subtle text-primary"><i class="bi bi-cloud"></i></div>
+            <span class="text-muted small">Total Resources</span>
+            <h3 class="fw-bold my-1" id="dash-total">-</h3>
+            <span class="text-success small fw-medium"><i class="bi bi-arrow-up"></i> 12 this week</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="kpi-card">
+            <div class="icon-badge bg-warning-subtle text-warning"><i class="bi bi-clock"></i></div>
+            <span class="text-muted small">Idle Resources</span>
+            <h3 class="fw-bold text-warning my-1" id="dash-idle">-</h3>
+            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> 5 vs last week</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="kpi-card">
+            <div class="icon-badge bg-info-subtle text-info"><i class="bi bi-currency-dollar"></i></div>
+            <span class="text-muted small">Monthly Cloud Cost</span>
+            <h3 class="fw-bold my-1" id="dash-cost">-</h3>
+            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> 4.2% vs last month</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="kpi-card">
+            <div class="icon-badge bg-success-subtle text-success"><i class="bi bi-plus-lg"></i></div>
+            <span class="text-muted small">Potential Savings</span>
+            <h3 class="fw-bold text-success my-1" id="dash-savings">-</h3>
+            <span class="text-success small fw-medium">31% of spend</span>
+          </div>
+        </div>
+        <div class="col">
+          <div class="kpi-card text-center">
+            <div class="score-circle">86%</div>
+            <span class="text-muted small fw-bold">Optimization Score</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Visualizations -->
+      <div class="row g-3">
+        <div class="col-md-8">
+          <div class="card p-3 border-0 rounded-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h6 class="fw-bold mb-0">Monthly Cloud Spending</h6>
+                <div class="d-flex align-items-baseline gap-2 mt-1">
+                  <h4 class="fw-bold mb-0" id="dash-chart-cost">$12,450</h4>
+                  <small class="text-danger fw-semibold"><i class="bi bi-arrow-up"></i> 4.2% vs last month</small>
+                </div>
+              </div>
+              <span class="text-muted small">Jan – Dec 2026</span>
+            </div>
+            <canvas id="monthlySpendingChart" height="130"></canvas>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 border-0 rounded-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0">Resource Distribution</h6>
+              <span class="text-primary small fw-semibold" id="dash-chart-total">235 total</span>
+            </div>
+            <canvas id="resourceDistributionChart" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View 2: RESOURCE DISCOVERY -->
+    <div id="view-discovery" class="view-panel">
+      <h4 class="fw-bold mb-3">Discovered Multi-Cloud Resources</h4>
+      <div class="card border-0 shadow-sm p-3">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr><th>Name</th><th>Provider</th><th>Type</th><th>Region</th><th>Cost</th><th>Status</th></tr>
+          </thead>
+          <tbody id="discovery-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- View 3: IDLE RESOURCES -->
+    <div id="view-idle" class="view-panel">
+      <h4 class="fw-bold mb-3">Detected Idle Assets</h4>
+      <div class="card border-0 shadow-sm p-3">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr><th>Name</th><th>Provider</th><th>Avg CPU</th><th>Cost</th><th>Remediation</th></tr>
+          </thead>
+          <tbody id="idle-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- View 4: RECOMMENDATIONS -->
+    <div id="view-recommendations" class="view-panel">
+      <h4 class="fw-bold mb-3">Prescriptive Optimization Recommendations</h4>
+      <div class="row g-3" id="recommendations-container"></div>
+    </div>
+
+    <!-- Placeholder for Remaining Sidebar Sections -->
+    <div id="view-generic" class="view-panel">
+      <div class="card border-0 shadow-sm p-4 text-center">
+        <h5 class="fw-bold" id="generic-title">Section</h5>
+        <p class="text-muted">Configuration active for {{ company_name }}. Ready for evaluation telemetry integration.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let appData = null;
+
+    function switchTab(viewId, element) {
+      document.querySelectorAll('.sidebar-menu a').forEach(a => a.classList.remove('active'));
+      if(element) element.classList.add('active');
+
+      document.querySelectorAll('.view-panel').forEach(v => v.classList.remove('active'));
+      const target = document.getElementById('view-' + viewId);
+      if (target) {
+        target.classList.add('active');
+      } else {
+        document.getElementById('view-generic').classList.add('active');
+        document.getElementById('generic-title').innerText = viewId.toUpperCase();
+      }
+    }
+
+    async function initDashboard() {
+      const res = await fetch('/api/data');
+      appData = await res.json();
+
+      document.getElementById('dash-total').innerText = appData.summary.total_resources;
+      document.getElementById('dash-idle').innerText = appData.summary.idle_resources;
+      document.getElementById('dash-cost').innerText = '$' + appData.summary.monthly_cost.toLocaleString();
+      document.getElementById('dash-savings').innerText = '$' + appData.summary.potential_savings.toLocaleString();
+      document.getElementById('dash-chart-cost').innerText = '$' + appData.summary.monthly_cost.toLocaleString();
+      document.getElementById('dash-chart-total').innerText = appData.summary.total_resources + ' total';
+
+      renderCharts(appData.distribution);
+      renderTables(appData.resources);
+    }
+
+    function renderCharts(dist) {
+      // Monthly Spend Line Chart
+      new Chart(document.getElementById('monthlySpendingChart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          datasets: [
+            { label: 'AWS', data: [8000, 8400, 8100, 9200, 9000, 10100, 9800, 10800, 11000, 11200, 13100, 12450], borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.06)', fill: true, tension: 0.35 },
+            { label: 'Azure', data: [3200, 3100, 3300, 3900, 3800, 4200, 4100, 4300, 4500, 4600, 4700, 4800], borderColor: '#f59e0b', tension: 0.35, fill: false },
+            { label: 'Google Cloud', data: [1800, 1900, 1950, 2100, 2050, 2300, 2200, 2400, 2500, 2600, 2800, 2900], borderColor: '#10b981', tension: 0.35, fill: false }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+
+      // Resource Distribution Donut Chart
+      new Chart(document.getElementById('resourceDistributionChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(dist),
+          datasets: [{
+            data: Object.values(dist),
+            backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444']
+          }]
+        },
+        options: { responsive: true, cutout: '70%', plugins: { legend: { position: 'right' } } }
+      });
+    }
+
+    function renderTables(resources) {
+      // Discovery
+      document.getElementById('discovery-table').innerHTML = resources.map(r => `
+        <tr><td><strong>${r.name}</strong></td><td><span class="badge bg-light text-dark border">${r.provider}</span></td><td>${r.type}</td><td>${r.region}</td><td>$${r.cost}</td><td><span class="badge ${r.status === 'Idle' ? 'bg-danger' : 'bg-success'}">${r.status}</span></td></tr>
+      `).join('');
+
+      // Idle Resources
+      document.getElementById('idle-table').innerHTML = resources.filter(r => r.status === 'Idle').map(r => `
+        <tr><td><strong>${r.name}</strong></td><td>${r.provider}</td><td>${r.avg_cpu}%</td><td>$${r.cost}</td><td class="text-danger fw-semibold">${r.recommendation}</td></tr>
+      `).join('');
+
+      // Recommendations
+      document.getElementById('recommendations-container').innerHTML = resources.filter(r => r.savings > 0).map(r => `
+        <div class="col-md-4">
+          <div class="card p-3 border-0 shadow-sm rounded-3">
+            <span class="badge bg-danger mb-2 align-self-start">Save $${r.savings}/mo</span>
+            <h6>${r.name} (${r.provider})</h6>
+            <p class="text-muted small">${r.recommendation}</p>
+            <button class="btn btn-primary btn-sm">Apply Recommendation</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    initDashboard();
+  </script>
+</body>
+</html>
