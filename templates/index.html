@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Resource Optimizer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light p-4">
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2 class="fw-bold text-primary">Cloud Resource Optimizer</h2>
+      <span class="badge bg-dark px-3 py-2">Multi-Cloud Active</span>
+    </div>
+    
+    <!-- KPI Overview Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3"><div class="card p-3 shadow-sm text-center"><h6>Total Assets</h6><h3 id="total-res" class="text-primary">-</h3></div></div>
+      <div class="col-md-3"><div class="card p-3 shadow-sm text-center"><h6>Idle Assets</h6><h3 id="idle-res" class="text-danger">-</h3></div></div>
+      <div class="col-md-3"><div class="card p-3 shadow-sm text-center"><h6>Monthly Cost</h6><h3 id="cost-val" class="text-dark">-</h3></div></div>
+      <div class="col-md-3"><div class="card p-3 shadow-sm text-center"><h6>Potential Savings</h6><h3 id="savings-val" class="text-success">-</h3></div></div>
+    </div>
+
+    <!-- Inventory Table -->
+    <div class="card shadow-sm p-4">
+      <h5 class="card-title fw-bold">Discovered Cloud Assets & Prescriptive Actions</h5>
+      <table class="table table-hover mt-3 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Asset Name</th><th>Provider</th><th>Type</th><th>Avg CPU</th><th>Monthly Cost</th><th>Status</th><th>Prescribed Action</th>
+          </tr>
+        </thead>
+        <tbody id="resource-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    fetch('/api/summary')
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('total-res').innerText = data.total_resources;
+        document.getElementById('idle-res').innerText = data.idle_resources;
+        document.getElementById('cost-val').innerText = '$' + data.monthly_cost;
+        document.getElementById('savings-val').innerText = '$' + data.potential_savings;
+      });
+
+    fetch('/api/resources')
+      .then(res => res.json())
+      .then(data => {
+        const tbody = document.getElementById('resource-table-body');
+        tbody.innerHTML = data.map(r => `
+          <tr>
+            <td><strong>${r.name}</strong></td>
+            <td><span class="badge bg-secondary">${r.provider}</span></td>
+            <td>${r.type}</td>
+            <td>${r.avg_cpu}%</td>
+            <td>$${r.cost}</td>
+            <td><span class="badge ${r.status === 'Idle' ? 'bg-danger' : r.status === 'Underutilized' ? 'bg-warning' : 'bg-success'}">${r.status}</span></td>
+            <td class="text-primary fw-semibold">${r.recommendation}</td>
+          </tr>
+        `).join('');
+      });
+  </script>
+</body>
+</html>
