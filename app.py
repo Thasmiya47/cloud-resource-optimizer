@@ -1,9 +1,12 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from models import db, Company, User, CloudCredential, CloudResource
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "super-secret-optimizer-key-2026")
+app.secret_key = os.environ["SECRET_KEY"]
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///optimizer.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -64,10 +67,17 @@ def signup():
             return redirect(url_for("signup"))
 
         company = Company.query.filter_by(name=company_name).first()
-        if not company:
-            company = Company(name=company_name)
-            db.session.add(company)
-            db.session.commit()
+
+        if company:
+            flash(
+                "This company already exists. Contact its administrator for access.",
+                "danger"
+            )
+            return redirect(url_for("signup"))
+
+        company = Company(name=company_name)
+        db.session.add(company)
+        db.session.commit()
 
         user = User(email=email, full_name=full_name, company_id=company.id)
         user.set_password(password)
