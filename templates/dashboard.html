@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cloud Optimizer - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
@@ -27,6 +27,7 @@
     
     .view-panel { display: none; }
     .view-panel.active { display: block; }
+  @media(max-width:800px){.sidebar{position:static;width:100%;min-height:auto}.top-header,.main-body{margin-left:0}.top-header{padding:12px;height:auto}.search-box{width:55%}.main-body{padding:16px}.table{font-size:0.8rem}}
   </style>
 </head>
 <body>
@@ -42,7 +43,7 @@
         <a class="nav-item active" onclick="switchTab('dashboard', this)"><i class="bi bi-house"></i> Dashboard</a>
         <a class="nav-item" onclick="switchTab('discovery', this)"><i class="bi bi-search"></i> Resource Discovery</a>
         <a class="nav-item" onclick="switchTab('monitoring', this)"><i class="bi bi-activity"></i> Monitoring</a>
-        <a class="nav-item" onclick="switchTab('idle', this)"><i class="bi bi-clock-history"></i> Idle Resources</a>
+        <a class="nav-item" onclick="switchTab('idle', this)"><i class="bi bi-clock-history"></i> Idle / Unused Candidates</a>
         <a class="nav-item" onclick="switchTab('cost', this)"><i class="bi bi-currency-dollar"></i> Cost Analysis</a>
         <a class="nav-item" onclick="switchTab('recommendations', this)"><i class="bi bi-lightbulb"></i> Recommendations</a>
         <a class="nav-item" onclick="switchTab('reports', this)"><i class="bi bi-file-earmark-text"></i> Reports</a>
@@ -61,7 +62,7 @@
   <div class="top-header">
     <div class="search-box">
       <i class="bi bi-search"></i>
-      <input type="text" class="form-control" placeholder="Search resources, alerts, reports...">
+      <input type="text" class="form-control" id="resource-search" placeholder="Filter resources by name, type or region">
     </div>
     <div class="d-flex align-items-center gap-3">
       <i class="bi bi-bell text-secondary fs-5 position-relative">
@@ -80,13 +81,25 @@
 
   <!-- Main Body Content -->
   <div class="main-body">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <label for="data-mode" class="fw-bold">Data source</label>
+      <select id="data-mode" class="form-select w-auto" onchange="initDashboard()">
+        <option value="live">Live Azure</option><option value="demo">Demo — synthetic data</option>
+      </select>
+      <a id="download-report" class="btn btn-outline-primary" href="/api/report.csv?mode=live">Export CSV</a>
+    </div>
+    <div id="data-status" class="alert alert-info" role="status">Loading Azure inventory…</div>
+    <button id="refresh-data" class="btn btn-outline-primary btn-sm mb-3" onclick="initDashboard()">Refresh inventory</button>
 
     <!-- View 1: DASHBOARD -->
     <div id="view-dashboard" class="view-panel active">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h4 class="fw-bold mb-1">Dashboard</h4>
-          <span class="text-muted">Overview of your multi-cloud resource health and spend</span>
+          <span class="text-muted">Azure resource assessment and cost optimization</span>
         </div>
         <a href="/connect-cloud" class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold">+ Connect Cloud Account</a>
       </div>
@@ -98,15 +111,15 @@
             <div class="icon-badge bg-primary-subtle text-primary"><i class="bi bi-cloud"></i></div>
             <span class="text-muted small">Total Resources</span>
             <h3 class="fw-bold my-1" id="dash-total">-</h3>
-            <span class="text-success small fw-medium"><i class="bi bi-arrow-up"></i> 12 this week</span>
+            <span class="text-success small fw-medium"><i class="bi bi-arrow-up"></i> Current inventory</span>
           </div>
         </div>
         <div class="col">
           <div class="kpi-card">
             <div class="icon-badge bg-warning-subtle text-warning"><i class="bi bi-clock"></i></div>
-            <span class="text-muted small">Idle Resources</span>
+            <span class="text-muted small">Idle / Unused Candidates</span>
             <h3 class="fw-bold text-warning my-1" id="dash-idle">-</h3>
-            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> 5 vs last week</span>
+            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> Review candidates</span>
           </div>
         </div>
         <div class="col">
@@ -114,7 +127,7 @@
             <div class="icon-badge bg-info-subtle text-info"><i class="bi bi-currency-dollar"></i></div>
             <span class="text-muted small">Monthly Cloud Cost</span>
             <h3 class="fw-bold my-1" id="dash-cost">-</h3>
-            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> 4.2% vs last month</span>
+            <span class="text-danger small fw-medium"><i class="bi bi-arrow-up"></i> See Cost Analysis for source</span>
           </div>
         </div>
         <div class="col">
@@ -122,13 +135,13 @@
             <div class="icon-badge bg-success-subtle text-success"><i class="bi bi-plus-lg"></i></div>
             <span class="text-muted small">Potential Savings</span>
             <h3 class="fw-bold text-success my-1" id="dash-savings">-</h3>
-            <span class="text-success small fw-medium">31% of spend</span>
+            <span class="text-success small fw-medium">Illustrative in demo mode only</span>
           </div>
         </div>
         <div class="col">
           <div class="kpi-card text-center">
-            <div class="score-circle">86%</div>
-            <span class="text-muted small fw-bold">Optimization Score</span>
+            <div class="score-circle">N/A</div>
+            <span class="text-muted small fw-bold">Score not calculated</span>
           </div>
         </div>
       </div>
@@ -139,22 +152,22 @@
           <div class="card p-3 border-0 rounded-3 shadow-sm h-100">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div>
-                <h6 class="fw-bold mb-0">Monthly Cloud Spending</h6>
+                <h6 class="fw-bold mb-0">Cost availability</h6>
                 <div class="d-flex align-items-baseline gap-2 mt-1">
-                  <h4 class="fw-bold mb-0" id="dash-chart-cost">$12,450</h4>
-                  <small class="text-danger fw-semibold"><i class="bi bi-arrow-up"></i> 4.2% vs last month</small>
+                  <h4 class="fw-bold mb-0" id="dash-chart-cost">N/A</h4>
+                  <small class="text-danger fw-semibold"><i class="bi bi-arrow-up"></i> See Cost Analysis for source</small>
                 </div>
               </div>
-              <span class="text-muted small">Jan – Dec 2026</span>
+              <span class="text-muted small">No historical billing chart</span>
             </div>
-            <canvas id="monthlySpendingChart" height="130"></canvas>
+            <p id="cost-explanation" class="text-muted py-5">Live billing is not integrated. Demo mode uses illustrative monthly prices.</p>
           </div>
         </div>
         <div class="col-md-4">
           <div class="card p-3 border-0 rounded-3 shadow-sm h-100">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h6 class="fw-bold mb-0">Resource Distribution</h6>
-              <span class="text-primary small fw-semibold" id="dash-chart-total">235 total</span>
+              <span class="text-primary small fw-semibold" id="dash-chart-total">Loading…</span>
             </div>
             <canvas id="resourceDistributionChart" height="200"></canvas>
           </div>
@@ -164,7 +177,7 @@
 
     <!-- View 2: RESOURCE DISCOVERY -->
     <div id="view-discovery" class="view-panel">
-      <h4 class="fw-bold mb-3">Discovered Multi-Cloud Resources</h4>
+      <h4 class="fw-bold mb-3">Discovered Azure Resources</h4>
       <div class="card border-0 shadow-sm p-3">
         <table class="table table-hover align-middle">
           <thead class="table-light">
@@ -177,7 +190,7 @@
 
     <!-- View 3: IDLE RESOURCES -->
     <div id="view-idle" class="view-panel">
-      <h4 class="fw-bold mb-3">Detected Idle Assets</h4>
+      <h4 class="fw-bold mb-3">Idle / Unused Review Candidates</h4>
       <div class="card border-0 shadow-sm p-3">
         <table class="table table-hover align-middle">
           <thead class="table-light">
@@ -194,12 +207,29 @@
       <div class="row g-3" id="recommendations-container"></div>
     </div>
 
-    <!-- Placeholder for Remaining Sidebar Sections -->
-    <div id="view-generic" class="view-panel">
-      <div class="card border-0 shadow-sm p-4 text-center">
-        <h5 class="fw-bold" id="generic-title">Section</h5>
-        <p class="text-muted">Configuration active for {{ company_name }}. Ready for evaluation telemetry integration.</p>
-      </div>
+    <div id="view-monitoring" class="view-panel">
+      <h4>CPU Monitoring</h4>
+      <p>Seven-day window, hourly averages. At least 135 of 168 hourly samples are required for a finding. CPU alone cannot establish that a workload is safe to stop.</p>
+      <div class="table-responsive bg-white p-3"><table class="table"><thead><tr><th>VM</th><th>Average CPU</th><th>Peak CPU</th><th>Coverage</th><th>Assessment</th></tr></thead><tbody id="monitor-table"></tbody></table></div>
+    </div>
+    <div id="view-cost" class="view-panel">
+      <h4>Cost Analysis</h4><p id="cost-note"></p>
+      <div class="table-responsive bg-white p-3"><table class="table"><thead><tr><th>Resource</th><th>Monthly cost</th><th>Potential monthly saving</th><th>Basis</th></tr></thead><tbody id="cost-table"></tbody></table></div>
+    </div>
+    <div id="view-reports" class="view-panel">
+      <h4>Reports</h4><p>Use Export CSV above to download an assessment with its data source, timestamp, findings and recommendations. Live exports run a fresh assessment. Empty inventories produce a header-only report.</p>
+    </div>
+    <div id="view-settings" class="view-panel">
+      <h4>Assessment rules</h4><ul>
+        <li>Read-only operation; all remediation is manual.</li>
+        <li>Idle VM candidate: average CPU below 1% and peak below 10%.</li>
+        <li>Underutilized VM candidate: average CPU below 10% and peak below 50%.</li>
+        <li>VM rules require at least 135 hourly samples over seven days.</li>
+        <li>Unattached disks and unassociated public IPs require ownership and dependency review.</li>
+        <li>Live billing is not integrated. Demo costs are illustrative USD inputs, not Azure price quotes.</li>
+        <li>Demo savings assume 100% recovery for removal candidates and 50% for downsizing candidates; these are not guaranteed.</li>
+        <li>Prototype CPU assessment is limited to the first 20 VMs per refresh.</li>
+      </ul><a href="/connect-cloud" class="btn btn-primary">Update Azure connection</a>
     </div>
 
   </div>
@@ -221,73 +251,96 @@
       }
     }
 
+    const statusBox = document.getElementById('data-status');
+    let distributionChart = null;
+    const money = v => v == null ? 'Not available' : '$' + v.toLocaleString(undefined, {maximumFractionDigits: 2});
+    const percent = v => v == null ? 'N/A' : v + '%';
+    function text(id, value) { document.getElementById(id).textContent = value; }
+    function tableMessage(id, columns, message) {
+      const body = document.getElementById(id); body.replaceChildren();
+      const cell = body.insertRow().insertCell(); cell.colSpan = columns;
+      cell.className = 'text-muted text-center py-4'; cell.textContent = message;
+    }
+    function row(id, values) {
+      const tr = document.getElementById(id).insertRow();
+      values.forEach(value => tr.insertCell().textContent = value == null ? 'N/A' : value);
+    }
     async function initDashboard() {
-      const res = await fetch('/api/data');
-      appData = await res.json();
-
-      document.getElementById('dash-total').innerText = appData.summary.total_resources;
-      document.getElementById('dash-idle').innerText = appData.summary.idle_resources;
-      document.getElementById('dash-cost').innerText = '$' + appData.summary.monthly_cost.toLocaleString();
-      document.getElementById('dash-savings').innerText = '$' + appData.summary.potential_savings.toLocaleString();
-      document.getElementById('dash-chart-cost').innerText = '$' + appData.summary.monthly_cost.toLocaleString();
-      document.getElementById('dash-chart-total').innerText = appData.summary.total_resources + ' total';
-
-      renderCharts(appData.distribution);
-      renderTables(appData.resources);
+      const mode = document.getElementById('data-mode').value;
+      document.getElementById('data-mode').disabled = true;
+      document.getElementById('refresh-data').disabled = true;
+      document.getElementById('download-report').href = '/api/report.csv?mode=' + mode;
+      statusBox.className = 'alert alert-info';
+      statusBox.textContent = mode === 'demo' ? 'Analyzing synthetic demo inputs…' : 'Reading Azure resources and metrics. This may take a moment…';
+      try {
+        const res = await fetch('/api/data?mode=' + mode, {cache: 'no-store'});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load assessment.');
+        appData = data;
+        text('dash-total', data.summary.total_resources);
+        text('dash-idle', data.summary.idle_resources);
+        text('dash-cost', money(data.summary.monthly_cost));
+        text('dash-savings', money(data.summary.potential_savings));
+        text('dash-chart-cost', money(data.summary.monthly_cost));
+        text('dash-chart-total', data.summary.total_resources + ' total');
+        const note = mode === 'demo'
+          ? 'DEMO: Synthetic resources and CPU samples. USD costs are illustrative inputs, not actual Azure bills. Savings assume removal of candidates or a 50% cost reduction for downsizing.'
+          : 'LIVE: Azure inventory and available metrics. Billing and prices are not integrated; costs and savings are unavailable.';
+        text('cost-note', note); text('cost-explanation', note);
+        statusBox.className = mode === 'demo' ? 'alert alert-warning' : 'alert alert-success';
+        statusBox.textContent = note + ' ' + data.summary.assessed_resources + ' of ' + data.summary.total_resources + ' resources assessed; ' + data.summary.findings + ' review findings. ' + (data.resources.length ? '' : 'No resources found. ') + (data.warnings || []).join(' ');
+        renderCharts(data.distribution); renderTables(data.resources);
+      } catch (error) {
+        appData = null;
+        if (distributionChart) { distributionChart.destroy(); distributionChart = null; }
+        ['dash-total','dash-idle','dash-cost','dash-savings','dash-chart-cost','dash-chart-total'].forEach(id => text(id, 'N/A'));
+        [['discovery-table',6],['idle-table',5],['monitor-table',5],['cost-table',4]].forEach(([id,n]) => tableMessage(id,n,'Assessment unavailable. Retry or reconnect Azure.'));
+        text('recommendations-container','Assessment unavailable.');
+        text('cost-note','No assessment loaded.'); text('cost-explanation','No assessment loaded.');
+        statusBox.className = 'alert alert-danger'; statusBox.textContent = error.message;
+      } finally {
+        document.getElementById('refresh-data').disabled = false;
+        document.getElementById('data-mode').disabled = false;
+      }
     }
-
     function renderCharts(dist) {
-      // Monthly Spend Line Chart
-      new Chart(document.getElementById('monthlySpendingChart').getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-          datasets: [
-            { label: 'AWS', data: [8000, 8400, 8100, 9200, 9000, 10100, 9800, 10800, 11000, 11200, 13100, 12450], borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.06)', fill: true, tension: 0.35 },
-            { label: 'Azure', data: [3200, 3100, 3300, 3900, 3800, 4200, 4100, 4300, 4500, 4600, 4700, 4800], borderColor: '#f59e0b', tension: 0.35, fill: false },
-            { label: 'Google Cloud', data: [1800, 1900, 1950, 2100, 2050, 2300, 2200, 2400, 2500, 2600, 2800, 2900], borderColor: '#10b981', tension: 0.35, fill: false }
-          ]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-      });
-
-      // Resource Distribution Donut Chart
-      new Chart(document.getElementById('resourceDistributionChart').getContext('2d'), {
-        type: 'doughnut',
-        data: {
-          labels: Object.keys(dist),
-          datasets: [{
-            data: Object.values(dist),
-            backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444']
-          }]
-        },
-        options: { responsive: true, cutout: '70%', plugins: { legend: { position: 'right' } } }
+      if (distributionChart) { distributionChart.destroy(); distributionChart = null; }
+      const canvas = document.getElementById('resourceDistributionChart');
+      canvas.hidden = !Object.keys(dist).length;
+      if (canvas.hidden || typeof Chart === 'undefined') return;
+      distributionChart = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut', data: {labels: Object.keys(dist), datasets: [{data: Object.values(dist), backgroundColor: ['#2563eb','#10b981','#f59e0b','#8b5cf6','#ef4444']}]},
+        options: {responsive:true, plugins:{legend:{position:'bottom'}}}
       });
     }
-
     function renderTables(resources) {
-      // Discovery
-      document.getElementById('discovery-table').innerHTML = resources.map(r => `
-        <tr><td><strong>${r.name}</strong></td><td><span class="badge bg-light text-dark border">${r.provider}</span></td><td>${r.type}</td><td>${r.region}</td><td>$${r.cost}</td><td><span class="badge ${r.status === 'Idle' ? 'bg-danger' : 'bg-success'}">${r.status}</span></td></tr>
-      `).join('');
-
-      // Idle Resources
-      document.getElementById('idle-table').innerHTML = resources.filter(r => r.status === 'Idle').map(r => `
-        <tr><td><strong>${r.name}</strong></td><td>${r.provider}</td><td>${r.avg_cpu}%</td><td>$${r.cost}</td><td class="text-danger fw-semibold">${r.recommendation}</td></tr>
-      `).join('');
-
-      // Recommendations
-      document.getElementById('recommendations-container').innerHTML = resources.filter(r => r.savings > 0).map(r => `
-        <div class="col-md-4">
-          <div class="card p-3 border-0 shadow-sm rounded-3">
-            <span class="badge bg-danger mb-2 align-self-start">Save $${r.savings}/mo</span>
-            <h6>${r.name} (${r.provider})</h6>
-            <p class="text-muted small">${r.recommendation}</p>
-            <button class="btn btn-primary btn-sm">Apply Recommendation</button>
-          </div>
-        </div>
-      `).join('');
+      const query = document.getElementById('resource-search').value.toLowerCase();
+      const visible = resources.filter(r => [r.name,r.type,r.region].some(v => String(v || '').toLowerCase().includes(query)));
+      ['discovery-table','idle-table','monitor-table','cost-table'].forEach(id => document.getElementById(id).replaceChildren());
+      if (!visible.length) tableMessage('discovery-table',6,'No matching resources.');
+      visible.forEach(r => row('discovery-table',[r.name,r.provider,r.type,r.region,money(r.cost),r.status]));
+      const idle = resources.filter(r => ['Idle candidate','Unattached','Unassociated'].includes(r.status));
+      if (!idle.length) tableMessage('idle-table',5,'No idle or unused candidates identified in the available assessment.');
+      idle.forEach(r => row('idle-table',[r.name,r.provider,percent(r.avg_cpu),money(r.cost),r.recommendation]));
+      const vms = resources.filter(r => r.azure_type.toLowerCase() === 'microsoft.compute/virtualmachines');
+      if (!vms.length) tableMessage('monitor-table',5,'No VMs discovered.');
+      vms.forEach(r => row('monitor-table',[r.name,percent(r.avg_cpu),percent(r.peak_cpu),percent(r.cpu_coverage),r.status]));
+      if (!resources.length) tableMessage('cost-table',4,'No resources discovered.');
+      resources.forEach(r => row('cost-table',[r.name,money(r.cost),money(r.savings),appData.mode === 'demo' ? 'Illustrative demo assumption' : 'Price not collected']));
+      const container = document.getElementById('recommendations-container'); container.replaceChildren();
+      const findings = resources.filter(r => r.finding);
+      if (!findings.length) container.textContent = 'No recommendations from the available assessment. Unassessed resources may still need review.';
+      findings.forEach(r => {
+        const column = document.createElement('div'); column.className='col-md-6';
+        const card = document.createElement('div'); card.className='card p-3 h-100';
+        const heading = document.createElement('h6'); heading.textContent=r.name + ' — ' + r.status;
+        const details = document.createElement('p'); details.textContent=r.recommendation;
+        const saving = document.createElement('p'); saving.textContent=r.savings == null ? 'Savings not priced.' : 'Illustrative monthly saving: ' + money(r.savings);
+        const action = document.createElement('small'); action.textContent='Manual review required. This app does not change Azure resources.';
+        card.append(heading,details,saving,action); column.append(card); container.append(column);
+      });
     }
+    document.getElementById('resource-search').addEventListener('input', () => {if(appData) renderTables(appData.resources);});
 
     initDashboard();
   </script>

@@ -46,3 +46,13 @@ class CloudResource(db.Model):
     status = db.Column(db.String(50), default="Active") # Active, Idle, Underutilized
     recommendation = db.Column(db.String(200))
     potential_savings = db.Column(db.Float, default=0.0)
+
+class AzureConnection(db.Model):
+    __tablename__ = "azure_connections"
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, unique=True)
+    tenant_id = db.Column(db.String(36), nullable=False)
+    client_id = db.Column(db.String(36), nullable=False)
+    subscription_id = db.Column(db.String(36), nullable=False)
+    encrypted_client_secret = db.Column(db.Text, nullable=False)
+    company = db.relationship("Company", backref=db.backref("azure_connection", uselist=False))

@@ -1,6 +1,18 @@
+from credential_security import encrypt_secret, decrypt_secret
+from azure_connector import discover_azure_resources
+from azure.core.exceptions import AzureError
+from cryptography.fernet import InvalidToken
+from sqlalchemy.exc import SQLAlchemyError
+from uuid import UUID
+import secrets
+import csv
+import io
+from flask import Response
+from assessment import demo_resources
+from azure_assessment import assess_azure, payload
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
-from models import db, Company, User, CloudCredential, CloudResource
+from models import db, Company, User, CloudCredential, CloudResource, AzureConnection
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,19 +27,6 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-def seed_sample_resources(company_id):
-    """Seed data matching prototype numbers if newly registered"""
-    samples = [
-        CloudResource(company_id=company_id, name="prod-k8s-node-01", provider="AWS", resource_type="Virtual Machines", region="us-east-1", avg_cpu=82.0, monthly_cost=420.0, status="Active", recommendation="Optimal operation", potential_savings=0.0),
-        CloudResource(company_id=company_id, name="dev-staging-vm", provider="AWS", resource_type="Virtual Machines", region="us-east-1", avg_cpu=0.4, monthly_cost=180.0, status="Idle", recommendation="Stop instance immediately", potential_savings=180.0),
-        CloudResource(company_id=company_id, name="analytics-warehouse", provider="Google Cloud", resource_type="Databases", region="us-central1", avg_cpu=6.2, monthly_cost=650.0, status="Underutilized", recommendation="Downgrade compute tier", potential_savings=220.0),
-        CloudResource(company_id=company_id, name="legacy-backup-disk", provider="Azure", resource_type="Storage", region="East US", avg_cpu=0.0, monthly_cost=140.0, status="Idle", recommendation="Unattached disk - Delete volume", potential_savings=140.0),
-        CloudResource(company_id=company_id, name="ingress-lb-dev", provider="AWS", resource_type="Load Balancers", region="us-west-2", avg_cpu=2.1, monthly_cost=95.0, status="Underutilized", recommendation="Migrate to shared Gateway", potential_savings=45.0),
-        CloudResource(company_id=company_id, name="vpc-nat-gateway-spare", provider="Google Cloud", resource_type="Networking", region="us-east1", avg_cpu=0.0, monthly_cost=120.0, status="Idle", recommendation="Release unused static IP & NAT", potential_savings=120.0)
-    ]
-    db.session.bulk_save_objects(samples)
-    db.session.commit()
-
 @app.route("/")
 def index():
     if "user_id" in session:
@@ -40,14 +39,15 @@ def login():
         email = request.form.get("email")
         password = request.form.get("password")
         user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
+        if user and password and user.check_password(password):
+            session.clear()
             session["user_id"] = user.id
             session["user_name"] = user.full_name
             session["company_id"] = user.company_id
             session["company_name"] = user.company.name
             
             # Check if company has credentials added
-            has_creds = CloudCredential.query.filter_by(company_id=user.company_id).first()
+            has_creds = AzureConnection.query.filter_by(company_id=user.company_id).first()
             if not has_creds:
                 return redirect(url_for("connect_cloud"))
             return redirect(url_for("dashboard"))
@@ -89,25 +89,55 @@ def signup():
         session["company_id"] = company.id
         session["company_name"] = company.name
 
-        seed_sample_resources(company.id)
         return redirect(url_for("connect_cloud"))
     return render_template("signup.html")
 
 @app.route("/connect-cloud", methods=["GET", "POST"])
 def connect_cloud():
-    if "user_id" not in session:
+    user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
+    if user is None:
         return redirect(url_for("login"))
+    if "cloud_csrf" not in session:
+        session["cloud_csrf"] = secrets.token_urlsafe(32)
     if request.method == "POST":
-        company_id = session["company_id"]
-        provider = request.form.get("provider")
-        account_id = request.form.get("account_id")
-        secret_key = request.form.get("secret_key")
-
-        cred = CloudCredential(company_id=company_id, provider=provider, account_id=account_id, secret_key=secret_key)
-        db.session.add(cred)
-        db.session.commit()
+        token = request.form.get("csrf_token", "")
+        if not secrets.compare_digest(token, session["cloud_csrf"]):
+            return "Form expired. Reload this page and try again.", 400
+        try:
+            tenant_id = str(UUID(request.form.get("tenant_id", "").strip()))
+            client_id = str(UUID(request.form.get("client_id", "").strip()))
+            subscription_id = str(UUID(request.form.get("subscription_id", "").strip()))
+        except ValueError:
+            flash("Tenant, client and subscription IDs must be valid UUIDs.", "danger")
+            return redirect(url_for("connect_cloud"))
+        client_secret = request.form.get("client_secret", "").strip()
+        if not client_secret:
+            flash("Client secret Value is required.", "danger")
+            return redirect(url_for("connect_cloud"))
+        try:
+            resources = discover_azure_resources(
+                tenant_id, client_id, client_secret, subscription_id
+            )
+        except (AzureError, ValueError):
+            flash("Azure connection failed. Check your IDs, secret Value, network and Reader access.", "danger")
+            return redirect(url_for("connect_cloud"))
+        try:
+            connection = AzureConnection.query.filter_by(company_id=user.company_id).first()
+            if connection is None:
+                connection = AzureConnection(company_id=user.company_id)
+                db.session.add(connection)
+            connection.tenant_id = tenant_id
+            connection.client_id = client_id
+            connection.subscription_id = subscription_id
+            connection.encrypted_client_secret = "fernet:v1:" + encrypt_secret(client_secret)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash("Could not save the connection. Please try again.", "danger")
+            return redirect(url_for("connect_cloud"))
+        flash(f"Azure connected. Discovered {len(resources)} resources.", "success")
         return redirect(url_for("dashboard"))
-    return render_template("connect_cloud.html")
+    return render_template("connect_cloud.html", csrf_token=session["cloud_csrf"])
 
 @app.route("/dashboard")
 def dashboard():
@@ -120,45 +150,53 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
+def current_assessment():
+    user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
+    if user is None:
+        return {"error": "Please sign in again."}, 401
+    mode = request.args.get("mode", "live")
+    if mode not in ("live", "demo"):
+        return {"error": "Unknown mode."}, 400
+    if mode == "demo":
+        return payload(demo_resources(), "demo"), 200
+    connection = AzureConnection.query.filter_by(company_id=user.company_id).first()
+    if connection is None:
+        return {"error": "Connect an Azure account to load live resources."}, 409
+    try:
+        secret = decrypt_secret(connection.encrypted_client_secret.removeprefix("fernet:v1:"))
+        return assess_azure(connection.tenant_id, connection.client_id, secret, connection.subscription_id), 200
+    except InvalidToken:
+        return {"error": "Stored credentials cannot be decrypted. Reconnect Azure."}, 503
+    except (AzureError, ValueError):
+        return {"error": "Azure request failed. Check network, credentials and Reader access. Demo mode is available separately."}, 502
+
+
 @app.route("/api/data")
 def api_data():
-    if "company_id" not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-    
-    cid = session["company_id"]
-    resources = CloudResource.query.filter_by(company_id=cid).all()
-    
-    total_spend = sum(r.monthly_cost for r in resources)
-    total_savings = sum(r.potential_savings for r in resources)
-    idle_count = sum(1 for r in resources if r.status == "Idle")
+    data, status = current_assessment()
+    response = jsonify(data)
+    response.status_code = status
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
-    # Resource type breakdown
-    type_counts = {"Virtual Machines": 0, "Storage": 0, "Databases": 0, "Load Balancers": 0, "Networking": 0}
-    for r in resources:
-        type_counts[r.resource_type] = type_counts.get(r.resource_type, 0) + 1
 
-    return jsonify({
-        "summary": {
-            "total_resources": len(resources),
-            "idle_resources": idle_count,
-            "monthly_cost": round(total_spend, 2),
-            "potential_savings": round(total_savings, 2),
-            "optimization_score": 86
-        },
-        "distribution": type_counts,
-        "resources": [{
-            "id": r.id,
-            "name": r.name,
-            "provider": r.provider,
-            "type": r.resource_type,
-            "region": r.region,
-            "avg_cpu": r.avg_cpu,
-            "cost": r.monthly_cost,
-            "status": r.status,
-            "recommendation": r.recommendation,
-            "savings": r.potential_savings
-        } for r in resources]
-    })
+@app.route("/api/report.csv")
+def report_csv():
+    data, status = current_assessment()
+    if status != 200:
+        return jsonify(data), status
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Source", "Generated UTC", "Name", "Type", "Region", "Status", "Average CPU %", "CPU coverage %", "Monthly cost USD (demo only)", "Potential saving USD (demo only)", "Recommendation"])
+    def safe(value):
+        text = "" if value is None else str(value)
+        return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) or text.startswith(("\t", "\r", "\n")) else text
+    for r in data["resources"]:
+        writer.writerow([safe(v) for v in [data["source"], data["generated_at"], r["name"], r["type"], r["region"], r["status"], r.get("avg_cpu"), r.get("cpu_coverage"), r.get("cost"), r.get("savings"), r.get("recommendation")]])
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = f'attachment; filename="optimizer-{data["mode"]}-report.csv"'
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

@@ -1,39 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Connect Cloud Account - Cloud Optimizer</title>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Azure - Cloud Optimizer</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background-color: #f4f6fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .card-box { width: 500px; border-radius: 12px; background: #fff; padding: 35px; border: 1px solid #e2e8f0; }
-  </style>
+  <style>body{background:#f4f6fa;min-height:100vh;display:grid;place-items:center;padding:24px}.card-box{width:100%;max-width:540px;background:white;padding:32px;border:1px solid #e2e8f0;border-radius:14px}</style>
 </head>
-<body>
-  <div class="card-box">
-    <h5 class="fw-bold mb-1">Connect Your Cloud Platform</h5>
-    <p class="text-muted small mb-4">Provide read-only API access credentials for telemetry discovery.</p>
-    
-    <form method="POST" action="/connect-cloud">
-      <div class="mb-3">
-        <label class="form-label small fw-semibold">Cloud Provider</label>
-        <select class="form-select" name="provider">
-          <option value="AWS">Amazon Web Services (AWS)</option>
-          <option value="Azure">Microsoft Azure</option>
-          <option value="Google Cloud">Google Cloud Platform (GCP)</option>
-        </select>
-      </div>
-      <div class="mb-3">
-        <label class="form-label small fw-semibold">Access Key ID / Tenant Subscription ID</label>
-        <input type="text" name="account_id" class="form-control" placeholder="e.g. AKIAIOSFODNN7EXAMPLE" required>
-      </div>
-      <div class="mb-3">
-        <label class="form-label small fw-semibold">Secret Access Key / Client Secret</label>
-        <input type="password" name="secret_key" class="form-control" placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" required>
-        <div class="form-text small">Stored securely following least-privilege read-only policy.</div>
-      </div>
-      <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Authenticate & Launch Dashboard</button>
-    </form>
-  </div>
-</body>
-</html>
+<body><main class="card-box">
+  <h3>Connect Microsoft Azure</h3>
+  <p class="text-muted">Use your app registration with Reader access to the subscription. Connecting replaces your company's previous Azure connection.</p>
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+  {% endfor %}
+  <form method="POST" action="{{ url_for('connect_cloud') }}" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="tenant_id" class="form-label">Directory (tenant) ID</label>
+    <input id="tenant_id" name="tenant_id" class="form-control mb-3" required maxlength="36">
+    <label for="client_id" class="form-label">Application (client) ID</label>
+    <input id="client_id" name="client_id" class="form-control mb-3" required maxlength="36">
+    <label for="subscription_id" class="form-label">Subscription ID</label>
+    <input id="subscription_id" name="subscription_id" class="form-control mb-3" required maxlength="36">
+    <label for="client_secret" class="form-label">Client secret Value</label>
+    <input id="client_secret" name="client_secret" type="password" class="form-control mb-2" autocomplete="new-password" required>
+    <p class="small text-muted">Use the Value, not the Secret ID. The secret is encrypted before it is saved.</p>
+    <button class="btn btn-primary w-100" type="submit">Validate and connect Azure</button>
+    <p id="progress" class="small mt-2" role="status"></p>
+  </form>
+  <a href="{{ url_for('dashboard') }}" class="d-block mt-3">Back to dashboard</a>
+</main><script>
+document.querySelector('form').addEventListener('submit', () => {
+  document.querySelector('button').disabled = true;
+  document.getElementById('progress').textContent = 'Checking Azure access. This may take a moment…';
+});
+</script></body></html>
